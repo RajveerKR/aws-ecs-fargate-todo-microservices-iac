@@ -1,0 +1,26 @@
+{
+  "family": "todo-frontend-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::051208504980:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "todo-frontend",
+      "image": "051208504980.dkr.ecr.us-east-1.amazonaws.com/todo-frontend:v1",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 80, "protocol": "tcp" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/todo-frontend",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
