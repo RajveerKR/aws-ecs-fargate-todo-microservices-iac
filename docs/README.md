@@ -1,4 +1,3 @@
-
 ## Security Configuration
 
 A dedicated security group (todo-ecs-sg) was created for the ECS application.
