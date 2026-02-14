@@ -190,19 +190,11 @@ Importance of log group pre-configuration
 
 
 
-\### Log Group Created
+### Log Group Created
+![Log Group](log-group-created.png)
 
-
-
-!\[Log Group](log-group-created.png)
-
-
-
-\### Tasks Running Successfully
-
-
-
-!\[Task Running](task-running.png)
+### Tasks Running Successfully
+![Task Running](task-running.png)
 
 
 
