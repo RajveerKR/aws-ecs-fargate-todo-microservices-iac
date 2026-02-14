@@ -68,6 +68,10 @@ Screenshots and deployment evidence are available in:
 - `/docs`
 
 ---
+## Troubleshooting
+
+See detailed deployment issue resolution here:
+[Deployment Troubleshooting](docs/deployment-troubleshooting.md)
 
 ## Technologies Used
 
@@ -85,3 +89,4 @@ Screenshots and deployment evidence are available in:
 
 Rajveer Kaur  
 Cloud Engineering & Data Analytics
+
