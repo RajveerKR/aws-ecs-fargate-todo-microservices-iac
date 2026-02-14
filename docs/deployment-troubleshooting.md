@@ -186,7 +186,7 @@ Importance of log group pre-configuration
 
 
 
-!\[Task Failure](DeploymentChallenges.png)
+![Task Failure](deployment-challenges.png)
 
 
 
