@@ -42,22 +42,7 @@ Git & GitHub
 -------------------------------
 
 ## Architecture Overview
-
-Internet
-   │
-   ▼
-Application Load Balancer (Public Subnets)
-   │
-   ▼
-ECS Fargate Cluster
- ├── Frontend Service
- └── Backend Service
-   │
-Amazon ECR (Container Images)
-
-VPC
- ├── Public Subnets (ALB)
- └── Private Subnets (ECS Tasks)
+<img width="855" height="581" alt="image" src="https://github.com/user-attachments/assets/f4b3966a-c7df-499f-a2f9-f618a6b18727" />
 
 Architecture Highlights
 
@@ -141,6 +126,31 @@ ALB routed external traffic to frontend service
 
 Backend remained internal-only
 
+✅ Validation
+
+After successful deployment:
+
+CloudFormation status: CREATE_COMPLETE
+
+ECS Services: 1/1 tasks running
+
+ALB DNS retrieved from stack outputs
+
+Application accessible via public ALB endpoint
+<img width="795" height="269" alt="image" src="https://github.com/user-attachments/assets/0f16f20a-ecc0-42f1-bb96-5d2ebae2afcf" />
+
+
+🌐 Application Running via ALB
+
+The frontend container is successfully reachable through the Application Load Balancer DNS name, confirming:
+
+ECS tasks are running
+
+ALB routing is functional
+
+Security groups are correctly configured
+
+End-to-end deployment succeeded
 ---
 
 ## Evidence
@@ -156,15 +166,6 @@ Screenshots and deployment evidence are available in:
 See detailed deployment issue resolution here:
 [Deployment Troubleshooting](docs/deployment-troubleshooting.md)
 
-## Technologies Used
-
-- AWS CLI
-- Docker
-- Amazon ECR
-- Amazon ECS
-- AWS Fargate
-- EC2 Networking
-- Git & GitHub
 
 ---
 🎯 Key Skills Demonstrated
@@ -198,5 +199,6 @@ This repository reflects real-world cloud engineering practices:
 
 Rajveer Kaur  
 Cloud Engineering & Data Analytics
+
 
 
