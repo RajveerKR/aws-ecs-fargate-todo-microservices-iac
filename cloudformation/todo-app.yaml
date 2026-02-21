@@ -1,0 +1,419 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Todo App (Frontend + Backend) on ECS Fargate with ALB - IaC for DCE03.2"
+
+Parameters:
+  AppName:
+    Type: String
+    Default: todo-app-v2
+
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+
+  PublicSubnet1Cidr:
+    Type: String
+    Default: 10.0.1.0/24
+
+  PublicSubnet2Cidr:
+    Type: String
+    Default: 10.0.2.0/24
+
+  PrivateSubnet1Cidr:
+    Type: String
+    Default: 10.0.3.0/24
+
+  PrivateSubnet2Cidr:
+    Type: String
+    Default: 10.0.4.0/24
+
+  ContainerPortFrontend:
+    Type: Number
+    Default: 80
+
+  ContainerPortBackend:
+    Type: Number
+    Default: 3000
+
+  FrontendImageUri:
+    Type: String
+    Description: "ECR image URI for frontend (e.g., <acct>.dkr.ecr.<region>.amazonaws.com/<repo>:v1)"
+
+  BackendImageUri:
+    Type: String
+    Description: "ECR image URI for backend (e.g., <acct>.dkr.ecr.<region>.amazonaws.com/<repo>:v1)"
+
+Resources:
+  # ---------------------------
+  # Networking: VPC + Subnets
+  # ---------------------------
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AppName}-vpc"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${AppName}-igw"
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnet1Cidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AppName}-public-1"
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnet2Cidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AppName}-public-2"
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet1Cidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${AppName}-private-1"
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet2Cidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${AppName}-private-2"
+
+  # ---------------------------
+  # Route Tables
+  # ---------------------------
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${AppName}-public-rt"
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${AppName}-private-rt"
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ---------------------------
+  # ECR Repositories (created by template, unique names)
+  # ---------------------------
+  FrontendEcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${AppName}-frontend-${AWS::AccountId}"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  BackendEcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${AppName}-backend-${AWS::AccountId}"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  # ---------------------------
+  # CloudWatch Logs
+  # ---------------------------
+  AppLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${AppName}"
+      RetentionInDays: 7
+
+  # ---------------------------
+  # IAM Role (no RoleName => avoids named IAM conflicts)
+  # ---------------------------
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # ---------------------------
+  # Security Groups
+  # ---------------------------
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${AppName} ALB SG"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${AppName} ECS Tasks SG"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPortFrontend
+          ToPort: !Ref ContainerPortFrontend
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPortBackend
+          ToPort: !Ref ContainerPortBackend
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  # ---------------------------
+  # ECS Cluster
+  # ---------------------------
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${AppName}-cluster"
+
+  # ---------------------------
+  # ALB + Target Groups + Listener + Path rule
+  # (No explicit Name: to avoid conflicts)
+  # ---------------------------
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+
+  FrontendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPC
+      Protocol: HTTP
+      Port: !Ref ContainerPortFrontend
+      TargetType: ip
+      HealthCheckPath: /
+      Matcher:
+        HttpCode: "200-399"
+
+  BackendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPC
+      Protocol: HTTP
+      Port: !Ref ContainerPortBackend
+      TargetType: ip
+      HealthCheckPath: /
+      Matcher:
+        HttpCode: "200-399"
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+
+  BackendPathRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 10
+      Conditions:
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - "/api/*"
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref BackendTargetGroup
+
+  # ---------------------------
+  # Task Definitions
+  # ---------------------------
+  FrontendTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${AppName}-frontend"
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "256"
+      Memory: "512"
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: frontend
+          Image: !Ref FrontendImageUri
+          PortMappings:
+            - ContainerPort: !Ref ContainerPortFrontend
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AppLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: frontend
+
+  BackendTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${AppName}-backend"
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "256"
+      Memory: "512"
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: backend
+          Image: !Ref BackendImageUri
+          PortMappings:
+            - ContainerPort: !Ref ContainerPortBackend
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AppLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: backend
+
+  # ---------------------------
+  # ECS Services
+  # (Run in PUBLIC subnets to avoid NAT Gateway cost)
+  # ---------------------------
+  FrontendService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListener
+    Properties:
+      ServiceName: !Sub "${AppName}-frontend-svc"
+      Cluster: !Ref ECSCluster
+      LaunchType: FARGATE
+      DesiredCount: 1
+      TaskDefinition: !Ref FrontendTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+      LoadBalancers:
+        - ContainerName: frontend
+          ContainerPort: !Ref ContainerPortFrontend
+          TargetGroupArn: !Ref FrontendTargetGroup
+
+  BackendService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListener
+    Properties:
+      ServiceName: !Sub "${AppName}-backend-svc"
+      Cluster: !Ref ECSCluster
+      LaunchType: FARGATE
+      DesiredCount: 1
+      TaskDefinition: !Ref BackendTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+      LoadBalancers:
+        - ContainerName: backend
+          ContainerPort: !Ref ContainerPortBackend
+          TargetGroupArn: !Ref BackendTargetGroup
+
+Outputs:
+  AlbDNS:
+    Description: "Public DNS name of the Application Load Balancer"
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+
+  FrontendRepoName:
+    Description: "ECR repository created by this template for frontend"
+    Value: !Ref FrontendEcrRepository
+
+  BackendRepoName:
+    Description: "ECR repository created by this template for backend"
+    Value: !Ref BackendEcrRepository

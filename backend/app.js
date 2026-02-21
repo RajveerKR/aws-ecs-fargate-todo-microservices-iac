@@ -2,6 +2,10 @@ const express = require("express");
 const app = express();
 app.use(express.json());
 
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
 let todos = [{ id: 1, task: "Learn Docker" }];
 
 app.get("/", (req, res) => {
